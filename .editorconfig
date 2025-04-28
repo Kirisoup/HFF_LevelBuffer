@@ -1,0 +1,7 @@
+[*.{cs,vb}]
+
+# IDE0003: Remove qualification
+dotnet_diagnostic.IDE0003.severity = none
+
+# IDE0350: Use implicitly typed lambda
+csharp_style_prefer_implicitly_typed_lambda_expression = false
