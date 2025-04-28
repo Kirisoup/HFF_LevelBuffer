@@ -7,27 +7,20 @@ namespace LevelBuffer.Patch;
 
 internal static partial class Game_LoadLevel
 {
-	static Game_LoadLevel() {
-		var fi__skyColor = AccessTools.Field(typeof(Game), "skyColor");
-		ArgumentNullException.ThrowIfNull(fi__skyColor, nameof(fi__skyColor));
-		set__skyColor = Emit.Stfld<Game, Color>(fi__skyColor);
+	static readonly Action<Game, Color> __skyColor_set = 
+		AccessTools.Field(typeof(Game), "skyColor")
+			?.EmitSet<Game, Color>()!
+			?? throw new NullReferenceException(nameof(__skyColor_set));
 
-		var fi__bundle = AccessTools.Field(typeof(Game), "bundle");
-		ArgumentNullException.ThrowIfNull(fi__bundle, nameof(fi__bundle));
-		get__bundle = Emit.Ldfld<Game, AssetBundle>(fi__bundle);
-		set__bundle = Emit.Stfld<Game, AssetBundle>(fi__bundle);
-
-		var mi__FixupLoadedBundle = AccessTools.Method(typeof(Game), "FixupLoadedBundle");
-		ArgumentNullException.ThrowIfNull(mi__FixupLoadedBundle, nameof(mi__FixupLoadedBundle));
-		call__FixupLoadedBundle = Emit.CallVoid<(Game, Scene)>(mi__FixupLoadedBundle);
-	}
-
-	static readonly Action<Game, Color> set__skyColor;
-
-	static readonly Func<Game, AssetBundle> get__bundle;
-	static readonly Action<Game, AssetBundle> set__bundle;
+	static readonly (Func<Game, AssetBundle> get, Action<Game, AssetBundle> set) __bundle = 
+		AccessTools.Field(typeof(Game), "bundle")
+			?.EmitPair<Game, AssetBundle>()
+			?? throw new NullReferenceException(nameof(__bundle));
 	
-	static readonly Action<(Game, Scene)> call__FixupLoadedBundle;
+	static readonly Action<(Game, Scene)> __FixupLoadedBundle_call = 
+		AccessTools.Method(typeof(Game), "FixupLoadedBundle")
+			?.EmitVoidCall<(Game, Scene)>()
+			?? throw new NullReferenceException(nameof(__FixupLoadedBundle_call));
 
 	[HarmonyPatch(typeof(Game), "LoadLevel")]
 	[HarmonyPrefix]
@@ -43,7 +36,7 @@ internal static partial class Game_LoadLevel
 			bool localLevel = false;
 			Multiplayer.NetScope.ClearAllButPlayers();
 			__instance.BeforeLoad();
-			set__skyColor(__instance, RenderSettings.ambientLight);
+			__skyColor_set(__instance, RenderSettings.ambientLight);
 			__instance.skyboxMaterial = RenderSettings.skybox;
 			__instance.state = GameState.LoadingLevel;
 			bool isBundle = 
@@ -112,19 +105,19 @@ internal static partial class Game_LoadLevel
 							});
 						while (!loaded) yield return null;
 					}
-					set__bundle(__instance, null!);
+					__bundle.set(__instance, null!);
 					if (__instance.workshopLevel != null) {
-						set__bundle(__instance, FileTools.LoadBundle(__instance.workshopLevel
+						__bundle.set(__instance, FileTools.LoadBundle(__instance.workshopLevel
 							.dataPath));
 					}
-					if (get__bundle(__instance) == null) {
+					if (__bundle.get(__instance) == null) {
 						SubtitleManager.instance.ClearProgress();
 						uDebug.Log("Level load failed.");
 						Multiplayer.App.instance.ServerFailedToLoad();
 						HumanAPI.SignalManager.EndReset();
 						yield break;
 					}
-					string[] scenePath = get__bundle(__instance).GetAllScenePaths();
+					string[] scenePath = __bundle.get(__instance).GetAllScenePaths();
 					if (string.IsNullOrEmpty(sceneName)) {
 						sceneName = Path.GetFileNameWithoutExtension(scenePath[0]);
 					}
@@ -166,8 +159,8 @@ internal static partial class Game_LoadLevel
 				yield break;
 			}
 			if (isBundle) {
-				call__FixupLoadedBundle((__instance, SceneManager.GetActiveScene()));
-				get__bundle(__instance).Unload(false);
+				__FixupLoadedBundle_call((__instance, SceneManager.GetActiveScene()));
+				__bundle.get(__instance).Unload(false);
 			}
 			if (__instance.currentLevelNumber >= 0 && !isBundle && 
 				levelType != WorkshopItemSource.EditorPick) {

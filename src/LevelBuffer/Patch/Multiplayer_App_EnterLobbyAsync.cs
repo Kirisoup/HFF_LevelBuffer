@@ -10,38 +10,25 @@ namespace LevelBuffer.Patch;
 
 internal static class Multiplayer_App_EnterLobbyAsync
 {
-	static Multiplayer_App_EnterLobbyAsync() {
-		var fi__lobbyAssetbundle = AccessTools.Field(typeof(App), "lobbyAssetbundle");
-		ArgumentNullException.ThrowIfNull(fi__lobbyAssetbundle, nameof(fi__lobbyAssetbundle));
-		get__lobbyAssetbundle = Emit.Ldfld<App, AssetBundle>(fi__lobbyAssetbundle);
-		set__lobbyAssetbundle = Emit.Stfld<App, AssetBundle>(fi__lobbyAssetbundle);
+	static readonly (Func<App, AssetBundle> get, Action<App, AssetBundle> set) __lobbyAssetbundle =
+		AccessTools.Field(typeof(App), "lobbyAssetbundle")
+			?.EmitPair<App, AssetBundle>()
+			?? throw new NullReferenceException(nameof(__lobbyAssetbundle));
 
-		var fi__previousLobbyID = AccessTools.Field(typeof(App), "previousLobbyID");
-		ArgumentNullException.ThrowIfNull(fi__previousLobbyID, nameof(fi__previousLobbyID));
-		get__previousLobbyID = Emit.Ldfld<App, ulong>(fi__previousLobbyID);
-		set__previousLobbyID = Emit.Stfld<App, ulong>(fi__previousLobbyID);
+	static readonly (Func<App, ulong> get, Action<App, ulong> set) __previousLobbyID =
+		AccessTools.Field(typeof(App), "previousLobbyID")
+			?.EmitPair<App, ulong>()
+			?? throw new NullReferenceException(nameof(__previousLobbyID));
 
-		var fi__queueAfterLevelLoad = AccessTools.Field(typeof(App), "queueAfterLevelLoad");
-		ArgumentNullException.ThrowIfNull(fi__queueAfterLevelLoad, nameof(fi__queueAfterLevelLoad));
-		get__queueAfterLevelLoad = Emit.Ldfld<App, Action>(fi__queueAfterLevelLoad);
-		set__queueAfterLevelLoad = Emit.Stfld<App, Action>(fi__queueAfterLevelLoad);
+	static readonly (Func<App, Action> get, Action<App, Action> set) __queueAfterLevelLoad =
+		AccessTools.Field(typeof(App), "queueAfterLevelLoad")
+			?.EmitPair<App, Action>()
+			?? throw new NullReferenceException(nameof(__queueAfterLevelLoad));
 
-		var mi__previousLobbyID = AccessTools.Method(typeof(App), "UpdateJoinable");
-		ArgumentNullException.ThrowIfNull(mi__previousLobbyID, nameof(mi__previousLobbyID));
-		call__UpdateJoinable = Emit.CallVoid<(App, bool)>(mi__previousLobbyID);
-
-	}
-
-	static readonly Func<App, AssetBundle> get__lobbyAssetbundle;
-	static readonly Action<App, AssetBundle> set__lobbyAssetbundle;
-
-	static readonly Func<App, ulong> get__previousLobbyID;
-	static readonly Action<App, ulong> set__previousLobbyID;
-
-	static readonly Func<App, Action> get__queueAfterLevelLoad;
-	static readonly Action<App, Action> set__queueAfterLevelLoad;
-
-	static readonly Action<(App, bool)> call__UpdateJoinable;
+	static readonly Action<(App, bool)> __UpdateJoinable_call = 
+		AccessTools.Method(typeof(App), "UpdateJoinable")
+			?.EmitVoidCall<(App, bool)>()
+			?? throw new NullReferenceException(nameof(__UpdateJoinable_call));
 
 	[HarmonyPatch(typeof(App), "EnterLobbyAsync")]
 	[HarmonyPrefix]
@@ -68,14 +55,14 @@ internal static class Multiplayer_App_EnterLobbyAsync
 						});
 					while (!loaded) yield return null;
 					if (workshopLevel is not null) {
-						set__lobbyAssetbundle(__instance, 
+						__lobbyAssetbundle.set(__instance, 
 							FileTools.LoadBundle(workshopLevel.dataPath));
-						var allScenePaths = get__lobbyAssetbundle(__instance)
+						var allScenePaths = __lobbyAssetbundle.get(__instance)
 							.GetAllScenePaths();
 						sceneName = Path.GetFileNameWithoutExtension(allScenePaths[0]);
-						App.StopPlaytimeForItem(get__previousLobbyID(__instance));
+						App.StopPlaytimeForItem(__previousLobbyID.get(__instance));
 						App.StartPlaytimeForItem(workshopLevel.workshopId);
-						set__previousLobbyID(__instance, workshopLevel.workshopId);
+						__previousLobbyID.set(__instance, workshopLevel.workshopId);
 					} else if (!NetGame.isServer) {
 						SubtitleManager.instance.ClearProgress();
 						uDebug.Log("Level load failed.");
@@ -115,17 +102,17 @@ internal static class Multiplayer_App_EnterLobbyAsync
 				if (!RatingMenu.instance.ShowRatingMenu())
 					MenuSystem.instance.ShowMainMenu<MultiplayerLobbyMenu>(false);
 				Game.instance.state = GameState.Inactive;
-				call__UpdateJoinable((__instance, false));
+				__UpdateJoinable_call((__instance, false));
 				callback?.Invoke();
-				if (get__queueAfterLevelLoad(__instance) is not null) {
-					Action action = get__queueAfterLevelLoad(__instance);
-					set__queueAfterLevelLoad(__instance, null!);
+				if (__queueAfterLevelLoad.get(__instance) is not null) {
+					Action action = __queueAfterLevelLoad.get(__instance);
+					__queueAfterLevelLoad.set(__instance, null!);
 					if (NetGame.netlog) uDebug.Log("Executing queue");
 					action();
 				}
-				if (get__lobbyAssetbundle(__instance) is not null) {
-					get__lobbyAssetbundle(__instance).Unload(false);
-					set__lobbyAssetbundle(__instance, null!);
+				if (__lobbyAssetbundle.get(__instance) is not null) {
+					__lobbyAssetbundle.get(__instance).Unload(false);
+					__lobbyAssetbundle.set(__instance, null!);
 				}
 				Game.instance.FixAssetBundleImport(true);
 			}

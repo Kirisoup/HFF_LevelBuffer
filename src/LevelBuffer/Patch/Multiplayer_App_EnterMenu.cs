@@ -7,15 +7,10 @@ namespace LevelBuffer.Patch;
 
 internal static class Multiplayer_App_EnterMenu
 {
-	static Multiplayer_App_EnterMenu() {
-		var mi__ExitLobby = AccessTools.Method(typeof(App), "ExitLobby");
-		ArgumentNullException.ThrowIfNull(mi__ExitLobby, nameof(mi__ExitLobby));
-		call__ExitLobby = Emit.CallVoid<(App, bool)>(mi__ExitLobby!);
-	}
-
-	static readonly Action<(App, bool)> call__ExitLobby;
-
-	const string scene = "Empty";
+	static readonly Action<(App, bool)> __ExitLobby_call = 
+		AccessTools.Method(typeof(App), "ExitLobby")
+			?.EmitVoidCall<(App, bool)>()
+			?? throw new NullReferenceException(nameof(__ExitLobby_call));
 
 	[HarmonyPatch(typeof(App), "EnterMenu")]
 	[HarmonyPrefix]
@@ -27,17 +22,17 @@ internal static class Multiplayer_App_EnterMenu
 			switch (App.state) {
 			case AppSate.Menu: return;
 			case AppSate.ClientLobby or AppSate.ServerLobby:
-				call__ExitLobby((__instance, false));
+				__ExitLobby_call((__instance, false));
 				goto case3;
 			case AppSate.Customize or AppSate.PlayLevel 
 			or AppSate.ClientLobby or AppSate.ServerLobby: case3:
 				Game.instance.HasSceneLoaded = false;
-				LevelBuffer.LoadLevelAdapter(scene, 
-					() => SceneManager.LoadSceneAsync(scene));
+				LevelBuffer.LoadLevelAdapter("Empty", 
+					() => SceneManager.LoadSceneAsync("Empty"));
 				goto default;
 			case AppSate.Startup:
 				Game.instance.HasSceneLoaded = false;
-				SceneManager.LoadScene(scene);
+				SceneManager.LoadScene("Empty");
 				goto default;
 			default:
 				Game.instance.state = GameState.Inactive;
