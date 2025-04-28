@@ -3,7 +3,6 @@ using AccEmit;
 using HarmonyLib;
 using HumanAPI;
 using Multiplayer;
-using UnityEngine.Assertions.Must;
 using UnityEngine.SceneManagement;
 
 namespace LevelBuffer.Patch;
@@ -119,5 +118,4 @@ internal static class Multiplayer_App_EnterLobbyAsync
 			yield break;
 		}
 	}
-
 }
