@@ -35,49 +35,30 @@ public sealed class LevelBuffer
 	public static LevelBuffer? Init(string sceneName) => 
 		(Current is null) ? (Current = new(sceneName)) : null;
 
-	public void Apply(Action<LevelBuffer>? callback = null) {
+	public void Apply(Action? callback = null) {
 		if (_op.isDone) return;
 		_op.allowSceneActivation = true;
-		if (callback is not null) Plugin.Instance.StartCoroutine(Await(
-			() => _op.isDone,
-			() => callback(this)
-		));
+		if (callback is not null) Plugin.Instance.Await(
+			condition: () => _op.isDone,
+			onFinish: () => callback()
+		);
 	}
 
-	public static void LoadLevel(string sceneName, Action? callback = null) {
-		if (Current is null) {
-			LoadSceneOriginal(sceneName, callback);
-			return;
+	internal static void LoadLevelAdapter(
+		string sceneName,
+		Action fallback,
+		Action? prepare = null,
+		Action? onFinish = null
+	) {
+		var buf = Current;
+		if (buf is null) {
+			fallback();
+		} else if (buf.SceneName != sceneName) {
+			fallback();
+			buf.Apply();
+		} else {
+			prepare?.Invoke();
+			buf.Apply(onFinish);
 		}
-		var instance = Current;
-		instance._op.allowSceneActivation = true;
-		
-		if (Current.SceneName != sceneName) {
-			Plugin.Logger.LogInfo($"cleaning up wrong scene buffer {instance.SceneName}");
-			Plugin.Instance.StartCoroutine(Await(
-				() => instance._op.isDone,
-				() => LoadSceneOriginal(sceneName, callback)
-			));
-			return;
-		}
-
-		Plugin.Logger.LogInfo($"loading scene {sceneName} from buffer");
-		if (callback is not null) Plugin.Instance.StartCoroutine(Await(
-			() => instance._op.isDone,
-			callback
-		));
-		return;
-	}
-
-	static void LoadSceneOriginal(string sceneName, Action? callback) {
-		var op = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Single);
-		if (callback is not null) Plugin.Instance.StartCoroutine(Await(
-			() => op.isDone && Game.instance.HasSceneLoaded,
-			callback));
-	}
-
-	static IEnumerator Await(Func<bool> condition, Action callback) {
-		while (!condition()) yield return null; 
-		callback();
 	}
 }
