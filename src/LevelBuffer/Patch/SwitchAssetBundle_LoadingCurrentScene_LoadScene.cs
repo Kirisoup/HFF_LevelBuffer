@@ -11,9 +11,7 @@ internal static class SwitchAssetBundle_LoadingCurrentScene_LoadScene
 		typeof(SwitchAssetBundle.LoadingCurrentScene), 
 		"LoadScene")]
 	[HarmonyPrefix]
-	static void Redirect(
-		SwitchAssetBundle.LoadingCurrentScene __instance,
-		ref bool __runOriginal) 
+	static void Redirect(SwitchAssetBundle.LoadingCurrentScene __instance, ref bool __runOriginal) 
 	{
 		var buffer = LevelBuffer.Current;
 		if (buffer is null) return;
