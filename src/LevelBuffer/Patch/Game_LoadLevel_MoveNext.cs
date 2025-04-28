@@ -6,7 +6,7 @@ using System.Collections;
 using UnityEngine.SceneManagement;
 using AccEmit;
 
-namespace LevelBuffer.Mod;
+namespace LevelBuffer.Patch;
 
 internal static class Game_LoadLevel
 {

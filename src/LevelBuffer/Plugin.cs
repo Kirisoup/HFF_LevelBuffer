@@ -30,34 +30,23 @@ sealed class Plugin : BaseUnityPlugin
 
 	void Awake() 
 	{
-		Logger.LogInfo("initializing");
-		_harmony.PatchAll(typeof(Mod.Game_LoadLevel));
-		
+		_harmony.PatchAll(typeof(Patch.Game_LoadLevel));
 		_pool.Register(cmd: "buf", str => {
-			var args = str?
+			if (str is null) {
+				Shell.Print("missing argument");
+				return;
+			}
+			var args = str
 				.ToLowerInvariant()
 				.Split([' '], StringSplitOptions.RemoveEmptyEntries);
-			if (args is null) {
-				Shell.Print("argument missing");
-				return;
-			}
-			if (LevelBuffer.Current is not null) {
-				Shell.Print($"buffer is occupied with scene {LevelBuffer.Current.SceneName}");
-				return;
-			}
-			string sceneName = uint.TryParse(args[0], out uint index) 
+			LevelBuffer.Init(uint.TryParse(args[0], out uint index) 
 				? Game.instance.levels[index]
-				: args[0];
-			// Logger.LogInfo($"");
-			LevelBuffer.Init(sceneName);
+				: args[0]);
 		});
 	}
 
 	void OnDestroy() {
-		Logger.LogInfo("removing");
 		_harmony.UnpatchSelf();
+		_pool.Dispose();
 	}
-
-	sealed class MultiInstantiationException() : 
-		InvalidOperationException($"Plugin {GUID} should not be instantiated multiple times");
 }
