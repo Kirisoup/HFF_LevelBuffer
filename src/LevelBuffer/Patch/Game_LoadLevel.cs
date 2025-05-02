@@ -5,31 +5,8 @@ using System.Collections;
 
 namespace LevelBuffer.Patch;
 
-
-[AttributeUsage(AttributeTargets.Field, AllowMultiple = false, Inherited = false)]
-public sealed class UnsafeStaticFieldAccessorAttribute(Type type, string name) : Attribute
-{
-	internal readonly Type type = type;
-	internal readonly string name = name;
-}
-
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = false)]
-public sealed class UnsafeFieldAccessorAttribute(string name) : Attribute
-{
-	internal readonly string name = name;
-}
-
 internal static partial class Game_LoadLevel
 {
-	// [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_count")]
-	// static extern ref int GetBundleField(Game game);
-
-	[UnsafeStaticFieldAccessor(typeof(Game), "skyColor")]
-	static unsafe readonly Color* skyColor;
-
-	[UnsafeFieldAccessor("skyColor")]
-	extern static ref Color Get_skyColor(Game instance);
-
 	static readonly RefFunc<Game, Color> __skyColor_ref = 
 		AccessTools.Field(typeof(Game), "skyColor")
 			?.EmitLoadAddr<Game, Color>()
