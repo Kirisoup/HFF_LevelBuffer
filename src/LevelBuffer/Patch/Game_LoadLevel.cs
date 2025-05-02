@@ -5,22 +5,45 @@ using System.Collections;
 
 namespace LevelBuffer.Patch;
 
+
+[AttributeUsage(AttributeTargets.Field, AllowMultiple = false, Inherited = false)]
+public sealed class UnsafeStaticFieldAccessorAttribute(Type type, string name) : Attribute
+{
+	internal readonly Type type = type;
+	internal readonly string name = name;
+}
+
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = false)]
+public sealed class UnsafeFieldAccessorAttribute(string name) : Attribute
+{
+	internal readonly string name = name;
+}
+
 internal static partial class Game_LoadLevel
 {
-	static readonly Action<Game, Color> __skyColor_set = 
-		AccessTools.Field(typeof(Game), "skyColor")
-			?.EmitSet<Game, Color>()!
-			?? throw new NullReferenceException(nameof(__skyColor_set));
+	// [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_count")]
+	// static extern ref int GetBundleField(Game game);
 
-	static readonly (Func<Game, AssetBundle> get, Action<Game, AssetBundle> set) __bundle = 
+	[UnsafeStaticFieldAccessor(typeof(Game), "skyColor")]
+	static unsafe readonly Color* skyColor;
+
+	[UnsafeFieldAccessor("skyColor")]
+	extern static ref Color Get_skyColor(Game instance);
+
+	static readonly RefFunc<Game, Color> __skyColor_ref = 
+		AccessTools.Field(typeof(Game), "skyColor")
+			?.EmitLoadAddr<Game, Color>()
+			?? throw new NullReferenceException(nameof(__skyColor_ref));
+
+	static readonly RefFunc<Game, AssetBundle> __bundle_ref = 
 		AccessTools.Field(typeof(Game), "bundle")
-			?.EmitPair<Game, AssetBundle>()
-			?? throw new NullReferenceException(nameof(__bundle));
+			?.EmitLoadAddr<Game, AssetBundle>()
+			?? throw new NullReferenceException(nameof(__bundle_ref));
 	
-	static readonly Action<(Game, Scene)> __FixupLoadedBundle_call = 
+	static readonly Action<Game, Scene> __FixupLoadedBundle = 
 		AccessTools.Method(typeof(Game), "FixupLoadedBundle")
-			?.EmitVoidCall<(Game, Scene)>()
-			?? throw new NullReferenceException(nameof(__FixupLoadedBundle_call));
+			?.CreateDelegate<Action<Game, Scene>>()
+			?? throw new NullReferenceException(nameof(__FixupLoadedBundle));
 
 	[HarmonyPatch(typeof(Game), "LoadLevel")]
 	[HarmonyPrefix]
@@ -36,7 +59,7 @@ internal static partial class Game_LoadLevel
 			bool localLevel = false;
 			Multiplayer.NetScope.ClearAllButPlayers();
 			__instance.BeforeLoad();
-			__skyColor_set(__instance, RenderSettings.ambientLight);
+			__skyColor_ref(__instance) = RenderSettings.ambientLight;
 			__instance.skyboxMaterial = RenderSettings.skybox;
 			__instance.state = GameState.LoadingLevel;
 			bool isBundle = 
@@ -44,14 +67,15 @@ internal static partial class Game_LoadLevel
 				(levelNumber > 32UL && levelNumber != ulong.MaxValue);
 			if (isBundle) {
 				if (string.IsNullOrEmpty(levelId)) {
-					bool loaded2 = false;
+					// Repo.GetLevel is synchronous, no await required
+					// bool loaded2 = false;
 					WorkshopRepository.instance.levelRepo.GetLevel(
 						levelNumber, levelType, 
 						l => {
 							__instance.workshopLevel = l;
-							loaded2 = true;
+							// loaded2 = true;
 						});
-					while (!loaded2) yield return null;
+					// while (!loaded2) yield return null;
 				} else {
 					localLevel = levelId.StartsWith("lvl:");
 					__instance.workshopLevel = WorkshopRepository.instance.levelRepo
@@ -65,15 +89,14 @@ internal static partial class Game_LoadLevel
 				}
 			}
 			Multiplayer.App.StartPlaytimeLocalPlayers();
-			if (__instance.currentLevelNumber != (int)levelNumber)
+			if (Plugin.AllowReload || __instance.currentLevelNumber != (int)levelNumber)
 			{
 				var oldLevel = Game.currentLevel;
 				SubtitleManager.instance.SetProgress(I2.Loc.ScriptLocalization.TUTORIAL.LOADING);
 				Application.backgroundLoadingPriority = UnityEngine.ThreadPriority.Low;
 				string sceneName = string.Empty;
 				__instance.currentLevelType = levelType;
-				switch (levelType)
-				{
+				switch (levelType) {
 				case WorkshopItemSource.BuiltIn:
 					sceneName = __instance.levels[(int)checked((IntPtr)levelNumber)];
 					break;
@@ -96,28 +119,30 @@ internal static partial class Game_LoadLevel
 					}
 				} else {
 					if (!localLevel && __instance.workshopLevel != null) {
-						bool loaded = false;
+						// bool loaded = false;
 						WorkshopRepository.instance.levelRepo.LoadLevel(
 							__instance.workshopLevel.workshopId, 
 							l => {
 								__instance.workshopLevel = l;
-								loaded = true;
+								// loaded = true;
 							});
-						while (!loaded) yield return null;
+						// while (!loaded) yield return null;
 					}
-					__bundle.set(__instance, null!);
+
+					ref AssetBundle __bundle = ref __bundle_ref(__instance);
+
+					__bundle = null!;
 					if (__instance.workshopLevel != null) {
-						__bundle.set(__instance, FileTools.LoadBundle(__instance.workshopLevel
-							.dataPath));
+						__bundle = FileTools.LoadBundle(__instance.workshopLevel.dataPath);
 					}
-					if (__bundle.get(__instance) == null) {
+					if (__bundle == null) {
 						SubtitleManager.instance.ClearProgress();
 						uDebug.Log("Level load failed.");
 						Multiplayer.App.instance.ServerFailedToLoad();
 						HumanAPI.SignalManager.EndReset();
 						yield break;
 					}
-					string[] scenePath = __bundle.get(__instance).GetAllScenePaths();
+					string[] scenePath = __bundle.GetAllScenePaths();
 					if (string.IsNullOrEmpty(sceneName)) {
 						sceneName = Path.GetFileNameWithoutExtension(scenePath[0]);
 					}
@@ -131,15 +156,16 @@ internal static partial class Game_LoadLevel
 
 #region mod
 					bool ok = false;
-					LevelBuffer.LoadLevelAdapter(sceneName, 
-						fallback: () => {
-							var op = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Single);
-							Plugin.Instance.Await(
-								condition: () => op.isDone && Game.instance.HasSceneLoaded,
-								onFinish: () => ok = Game.instance.HasSceneLoaded = true);
-						},
+					bool adapted = BufferManager.Load(
+						sceneName,
 						onFinish: () => ok = true);
-					while (!ok) yield return null;
+
+					if (adapted) {
+						while (!ok) yield return null;
+					} else {
+						var op = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Single);
+						while (!op.isDone) yield return null;
+					}
 #endregion mod
 
 					SubtitleManager.instance.SetProgress(I2.Loc.ScriptLocalization.TUTORIAL.LOADING, 
@@ -159,8 +185,8 @@ internal static partial class Game_LoadLevel
 				yield break;
 			}
 			if (isBundle) {
-				__FixupLoadedBundle_call((__instance, SceneManager.GetActiveScene()));
-				__bundle.get(__instance).Unload(false);
+				__FixupLoadedBundle(__instance, SceneManager.GetActiveScene());
+				__bundle_ref(__instance).Unload(false);
 			}
 			if (__instance.currentLevelNumber >= 0 && !isBundle && 
 				levelType != WorkshopItemSource.EditorPick) {

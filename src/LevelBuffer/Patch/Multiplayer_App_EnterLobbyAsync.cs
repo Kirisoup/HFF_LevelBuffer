@@ -9,25 +9,25 @@ namespace LevelBuffer.Patch;
 
 internal static class Multiplayer_App_EnterLobbyAsync
 {
-	static readonly (Func<App, AssetBundle> get, Action<App, AssetBundle> set) __lobbyAssetbundle =
+	static readonly RefFunc<App, AssetBundle> __lobbyAssetbundle_ref =
 		AccessTools.Field(typeof(App), "lobbyAssetbundle")
-			?.EmitPair<App, AssetBundle>()
-			?? throw new NullReferenceException(nameof(__lobbyAssetbundle));
+			?.EmitLoadAddr<App, AssetBundle>()
+			?? throw new NullReferenceException(nameof(__lobbyAssetbundle_ref));
 
-	static readonly (Func<App, ulong> get, Action<App, ulong> set) __previousLobbyID =
+	static readonly RefFunc<App, ulong> __previousLobbyID_ref =
 		AccessTools.Field(typeof(App), "previousLobbyID")
-			?.EmitPair<App, ulong>()
-			?? throw new NullReferenceException(nameof(__previousLobbyID));
+			?.EmitLoadAddr<App, ulong>()
+			?? throw new NullReferenceException(nameof(__previousLobbyID_ref));
 
-	static readonly (Func<App, Action> get, Action<App, Action> set) __queueAfterLevelLoad =
+	static readonly RefFunc<App, Action> __queueAfterLevelLoad_ref =
 		AccessTools.Field(typeof(App), "queueAfterLevelLoad")
-			?.EmitPair<App, Action>()
-			?? throw new NullReferenceException(nameof(__queueAfterLevelLoad));
+			?.EmitLoadAddr<App, Action>()
+			?? throw new NullReferenceException(nameof(__queueAfterLevelLoad_ref));
 
-	static readonly Action<(App, bool)> __UpdateJoinable_call = 
+	static readonly Action<App, bool> __UpdateJoinable = 
 		AccessTools.Method(typeof(App), "UpdateJoinable")
-			?.EmitVoidCall<(App, bool)>()
-			?? throw new NullReferenceException(nameof(__UpdateJoinable_call));
+			?.CreateDelegate<Action<App, bool>>()
+			?? throw new NullReferenceException(nameof(__UpdateJoinable));
 
 	[HarmonyPatch(typeof(App), "EnterLobbyAsync")]
 	[HarmonyPrefix]
@@ -40,6 +40,7 @@ internal static class Multiplayer_App_EnterLobbyAsync
 		IEnumerator Impl() {
 			NetScope.ClearAllButPlayers();
 			lock (App.stateLock) {
+
 				App.state = (!asServer) ? AppSate.ClientLoadLobby : AppSate.ServerLoadLobby;
 				__instance.SuspendDeltasForLoad();
 				Game.instance.HasSceneLoaded = false;
@@ -54,14 +55,18 @@ internal static class Multiplayer_App_EnterLobbyAsync
 						});
 					while (!loaded) yield return null;
 					if (workshopLevel is not null) {
-						__lobbyAssetbundle.set(__instance, 
-							FileTools.LoadBundle(workshopLevel.dataPath));
-						var allScenePaths = __lobbyAssetbundle.get(__instance)
-							.GetAllScenePaths();
+
+						ref AssetBundle __lobbyAssetbundle = ref __lobbyAssetbundle_ref(__instance);
+
+						__lobbyAssetbundle = FileTools.LoadBundle(workshopLevel.dataPath);
+						var allScenePaths = __lobbyAssetbundle.GetAllScenePaths();
 						sceneName = Path.GetFileNameWithoutExtension(allScenePaths[0]);
-						App.StopPlaytimeForItem(__previousLobbyID.get(__instance));
+
+						ref ulong __previousLobbyID = ref __previousLobbyID_ref(__instance);
+
+						App.StopPlaytimeForItem(__previousLobbyID);
 						App.StartPlaytimeForItem(workshopLevel.workshopId);
-						__previousLobbyID.set(__instance, workshopLevel.workshopId);
+						__previousLobbyID = workshopLevel.workshopId;
 					} else if (!NetGame.isServer) {
 						SubtitleManager.instance.ClearProgress();
 						uDebug.Log("Level load failed.");
@@ -83,35 +88,44 @@ internal static class Multiplayer_App_EnterLobbyAsync
 
 #region mod
 				bool ok = false;
-				LevelBuffer.LoadLevelAdapter(sceneName!, 
-					fallback: () => {
-						var op = SceneManager.LoadSceneAsync(sceneName);
-						Plugin.Instance.Await(
-							condition: () => op.isDone && Game.instance.HasSceneLoaded,
-							onFinish: () => ok = Game.instance.HasSceneLoaded = true);
-					},
+				bool adapted = BufferManager.Load(
+					sceneName!,
 					onFinish: () => ok = true);
-				while (!ok || !Game.instance.HasSceneLoaded) yield return null; 
+				
+				if (adapted) {
+					while (!ok) yield return null;
+				} else {
+					var op = SceneManager.LoadSceneAsync(sceneName);
+					while (!op.isDone) yield return null;
+				}
 #endregion mod
 
-				if (App.state != AppSate.ServerLoadLobby && App.state != AppSate.ClientLoadLobby)
+				if (App.state != AppSate.ServerLoadLobby && App.state != AppSate.ClientLoadLobby) {
 					uDebug.Log("Exiting wrong app state (" + App.state.ToString() + ")");
+				}
 				App.state = (!asServer) ? AppSate.ClientLobby : AppSate.ServerLobby;
 				__instance.ResumeDeltasAfterLoad();
-				if (!RatingMenu.instance.ShowRatingMenu())
+				if (!RatingMenu.instance.ShowRatingMenu()) {
 					MenuSystem.instance.ShowMainMenu<MultiplayerLobbyMenu>(false);
+				}
 				Game.instance.state = GameState.Inactive;
-				__UpdateJoinable_call((__instance, false));
+				__UpdateJoinable(__instance, false);
 				callback?.Invoke();
-				if (__queueAfterLevelLoad.get(__instance) is not null) {
-					Action action = __queueAfterLevelLoad.get(__instance);
-					__queueAfterLevelLoad.set(__instance, null!);
+
+				ref Action __queueAfterLevelLoad = ref __queueAfterLevelLoad_ref(__instance);
+
+				if (__queueAfterLevelLoad is not null) {
+					Action action = __queueAfterLevelLoad;
+					__queueAfterLevelLoad = null!;
 					if (NetGame.netlog) uDebug.Log("Executing queue");
 					action();
 				}
-				if (__lobbyAssetbundle.get(__instance) is not null) {
-					__lobbyAssetbundle.get(__instance).Unload(false);
-					__lobbyAssetbundle.set(__instance, null!);
+
+				ref AssetBundle __lobbyAssetbundle1 = ref __lobbyAssetbundle_ref(__instance);
+
+				if (__lobbyAssetbundle1 is not null) {
+					__lobbyAssetbundle1.Unload(false);
+					__lobbyAssetbundle1 = null!;
 				}
 				Game.instance.FixAssetBundleImport(true);
 			}

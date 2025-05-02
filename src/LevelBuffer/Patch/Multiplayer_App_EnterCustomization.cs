@@ -14,8 +14,8 @@ internal static class Multiplayer_App_EnterCustomization
 		lock (App.stateLock) {
 			App.state = AppSate.Customize;
 			CustomizationController.onInitialized = controllerLoaded;
-			LevelBuffer.LoadLevelAdapter("Customization", 
-				fallback: () => SceneManager.LoadSceneAsync("Customization"));
+			bool adapted = BufferManager.Load("Customization");
+			if (!adapted) SceneManager.LoadSceneAsync("Customization");
 		}
 	}
 }

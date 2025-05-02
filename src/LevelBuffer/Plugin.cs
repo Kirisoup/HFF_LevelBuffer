@@ -32,25 +32,26 @@ sealed class Plugin : BaseUnityPlugin
 	readonly Harmony _harmony = new(GUID);
 	readonly CommandPool _pool = new();
 
-	ConfigEntry<bool>? _cfgRegCommand;
+	internal static bool AllowReload { get; private set; }
 
 	void Awake() 
 	{
+		var allowReload = Config.Bind("Tweaks", "allowReload", true, 
+			"Allow re-loading of the same level");
+		
+		AllowReload = allowReload.Value;
+
 		_harmony.PatchAll(typeof(Patch.Game_LoadLevel));
 		_harmony.PatchAll(typeof(Patch.Multiplayer_App_EnterMenu));
 		_harmony.PatchAll(typeof(Patch.Multiplayer_App_EnterLobbyAsync));
 		_harmony.PatchAll(typeof(Patch.Multiplayer_App_EnterCustomization));
 		_harmony.PatchAll(typeof(Patch.SwitchAssetBundle_LoadingCurrentScene_LoadScene));
-		
-		_cfgRegCommand = Config.Bind(
-			section: "Command",
-			key: "registerCommand",
-			false,
-			description: "Whether should the plugin register a level `buf` command. It is only intended for testing purpose so leave it false unless you know what you're doing. "
-		);
 
-		if (_cfgRegCommand.Value) {
-			_pool.Register(cmd: "buf", str => {
+		var regCommand = Config.Bind("Util", "registerCommand", false,
+			"Registers extra debugging commands to the console");
+
+		if (regCommand.Value) {
+			_pool.Register("sbuf", str => {
 				if (str is null) {
 					Shell.Print("missing argument");
 					return;
@@ -61,9 +62,29 @@ sealed class Plugin : BaseUnityPlugin
 				string scene = uint.TryParse(args[0], out uint index) 
 					? Game.instance.levels[index]
 					: args[0];
-				Shell.Print($"buffering scene {scene}");
-				LevelBuffer.Init(scene);
+				bool ok = BufferManager.TryStartNew(() => SingleOperation.New(scene));
+				Shell.Print(ok 
+					? $"buffering scene {scene}" 
+					: "can not start buffer because thread is occupied");
 			});
+			_pool.Register("rbuf", str => {
+				if (str is null) {
+					Shell.Print("missing argument");
+					return;
+				}
+				var args = str
+					.ToLowerInvariant()
+					.Split([' '], StringSplitOptions.RemoveEmptyEntries);
+				string scene = uint.TryParse(args[0], out uint index) 
+					? Game.instance.levels[index]
+					: args[0];
+				bool ok = BufferManager.TryStartNew(() => ReloadOperation.New(scene));
+				Shell.Print(ok 
+					? $"buffering scene {scene}" 
+					: "can not start buffer because thread is occupied");
+			});
+			_pool.Register("rl", () => Multiplayer.App.instance.StartNextLevel(
+				(ulong)Game.instance.currentLevelNumber, 0));
 		}
 
 	}
